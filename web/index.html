@@ -57,7 +57,18 @@ nodes.forEach((n,i)=>{const a=i/nodes.length*Math.PI*2;pos[n.id]={x:W/2+Math.cos
 edges.forEach(e=>{const l=document.createElementNS("http://www.w3.org/2000/svg","line");l.setAttribute("x1",pos[e.source].x);l.setAttribute("y1",pos[e.source].y);l.setAttribute("x2",pos[e.target].x);l.setAttribute("y2",pos[e.target].y);l.setAttribute("class","edge");l.setAttribute("stroke-width",Math.max(1,Math.min(10,e.shared_users/100)));svg.appendChild(l)});
 nodes.forEach(n=>{const g=document.createElementNS("http://www.w3.org/2000/svg","g");g.classList.add("node");g.onclick=()=>show(n);const c=document.createElementNS("http://www.w3.org/2000/svg","circle");c.setAttribute("cx",pos[n.id].x);c.setAttribute("cy",pos[n.id].y);c.setAttribute("r",Math.max(7,Math.min(25,6+Math.sqrt(n.observed_users)/8)));c.setAttribute("fill",n.type==="NSFW"?"#8b2f55":"#555");g.appendChild(c);const t=document.createElementNS("http://www.w3.org/2000/svg","text");t.setAttribute("x",pos[n.id].x+10);t.setAttribute("y",pos[n.id].y+4);t.textContent=n.label;g.appendChild(t);svg.appendChild(g)});
 }
-function show(n){const links=data.edges.filter(e=>(e.source===n.id||e.target===n.id)&&e.shared_users>=minShared&&(relationship==="ALL"||e.crossover===relationship)).sort((a,b)=>b.shared_users-a.shared_users);document.getElementById("detail").innerHTML="<h3>"+n.label+"</h3><p><b>"+n.observed_users.toLocaleString()+"</b> observed participants</p><h3>Strongest overlaps</h3>"+links.map(e=>{const other=e.source===n.id?e.target:e.source;const pct=e.source===n.id?e.overlap_a:e.overlap_b;return "<p><b>r/"+other+"</b><br>"+e.shared_users.toLocaleString()+" shared · "+(pct*100).toFixed(1)+"% of this community</p>"}).join("")}
+function show(n){
+const links=data.edges.filter(e=>(e.source===n.id||e.target===n.id)&&e.shared_users>=minShared).sort((a,b)=>b.shared_users-a.shared_users);
+const crossover=links.filter(e=>e.crossover==="NSFW-SFW");
+const strongest=links.slice(0,8);
+let html="<h3>"+n.label+"</h3><p><b>"+n.observed_users.toLocaleString()+"</b> observed participants</p>";
+if(n.type==="NSFW"){
+html+="<h3>SFW crossover</h3>";
+html+=crossover.length?crossover.slice(0,8).map(e=>{const other=e.source===n.id?e.target:e.source;const pct=e.source===n.id?e.overlap_a:e.overlap_b;return "<p><b>r/"+other+"</b><br>"+e.shared_users.toLocaleString()+" shared · "+(pct*100).toFixed(1)+"% of this community</p>"}).join(""):"<p class='note'>No NSFW↔SFW edges meet the current threshold.</p>";
+}
+html+="<h3>Strongest overlaps</h3>"+strongest.map(e=>{const other=e.source===n.id?e.target:e.source;const pct=e.source===n.id?e.overlap_a:e.overlap_b;return "<p><b>r/"+other+"</b> <span class='note'>"+(e.crossover||"")+"</span><br>"+e.shared_users.toLocaleString()+" shared · "+(pct*100).toFixed(1)+"% of this community</p>"}).join("");
+document.getElementById("detail").innerHTML=html;
+}
 document.getElementById("min").oninput=e=>{minShared=+e.target.value;document.getElementById("minlabel").textContent=minShared;render()};
 document.getElementById("search").oninput=e=>{query=e.target.value;render()};document.getElementById("rel").onchange=e=>{relationship=e.target.value;render()};
 document.getElementById("demo").onclick=()=>{data=demo;render()};
