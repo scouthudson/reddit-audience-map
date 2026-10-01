@@ -13,20 +13,23 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 
 
-def discover_nsfw(reddit, limit):
+def discover_communities(reddit, limit, nsfw=True):
     found = {}
 
     def inspect(label, listing):
         for sub in listing:
             name = getattr(sub, "display_name", None)
-            if not name or not getattr(sub, "over18", False):
+            if not name:
+                continue
+            is_nsfw = bool(getattr(sub, "over18", False))
+            if is_nsfw != nsfw:
                 continue
             item = found.setdefault(
                 name,
                 {
                     "name": name,
                     "label": f"r/{name}",
-                    "nsfw": True,
+                    "nsfw": nsfw,
                     "discovery_sources": set(),
                 },
             )
@@ -35,10 +38,13 @@ def discover_nsfw(reddit, limit):
     inspect("popular", reddit.subreddits.popular(limit=limit))
     inspect("new", reddit.subreddits.new(limit=limit))
 
-    seeds = [
-        "nsfw", "adult", "gonewild", "porn", "sex",
-        "nude", "nudity", "xxx", "afterdark",
-    ]
+    seeds = (
+        ["nsfw", "adult", "gonewild", "porn", "sex", "nude", "nudity", "xxx", "afterdark"]
+        if nsfw
+        else ["news", "politics", "technology", "science", "sports", "gaming",
+              "movies", "music", "books", "food", "travel", "finance",
+              "education", "art", "history"]
+    )
     per_seed = max(25, min(250, limit // 4))
 
     for seed in seeds:
@@ -49,7 +55,7 @@ def discover_nsfw(reddit, limit):
                     seed,
                     sort="relevance",
                     time_filter="all",
-                    include_over_18=True,
+                    include_over_18=nsfw,
                     limit=per_seed,
                 ),
             )
@@ -70,7 +76,6 @@ def collect_posts_and_comments(reddit, sub_name, cutoff, observed):
         created = datetime.fromtimestamp(post.created_utc, tz=timezone.utc)
         newest = max(newest, created) if newest else created
         oldest = min(oldest, created) if oldest else created
-
         if created < cutoff:
             break
 
@@ -82,9 +87,7 @@ def collect_posts_and_comments(reddit, sub_name, cutoff, observed):
         try:
             post.comments.replace_more(limit=0)
             for comment in post.comments.list():
-                ctime = datetime.fromtimestamp(
-                    comment.created_utc, tz=timezone.utc
-                )
+                ctime = datetime.fromtimestamp(comment.created_utc, tz=timezone.utc)
                 if ctime < cutoff:
                     continue
                 cid = getattr(comment, "author_fullname", None)
@@ -108,7 +111,7 @@ def build_network(observed, report):
         {
             "id": name,
             "label": f"r/{name}",
-            "type": "NSFW",
+            "type": report["communities"].get(name, {}).get("type", "NSFW"),
             "observed_users": len(users),
         }
         for name, users in sorted(observed.items())
@@ -119,7 +122,6 @@ def build_network(observed, report):
         ua, ub = observed[a], observed[b]
         shared = len(ua & ub)
         union = len(ua | ub)
-
         if shared < 10 or not union:
             continue
 
@@ -127,16 +129,17 @@ def build_network(observed, report):
         if jaccard < 0.001:
             continue
 
-        edges.append(
-            {
-                "source": a,
-                "target": b,
-                "shared_users": shared,
-                "overlap_a": shared / len(ua) if ua else 0,
-                "overlap_b": shared / len(ub) if ub else 0,
-                "jaccard": jaccard,
-            }
-        )
+        edges.append({
+            "source": a,
+            "target": b,
+            "shared_users": shared,
+            "overlap_a": shared / len(ua) if ua else 0,
+            "overlap_b": shared / len(ub) if ub else 0,
+            "jaccard": jaccard,
+            "crossover": "NSFW-SFW" if (
+                report["communities"][a]["type"] != report["communities"][b]["type"]
+            ) else report["communities"][a]["type"] + "-" + report["communities"][b]["type"],
+        })
 
     network = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -145,18 +148,13 @@ def build_network(observed, report):
         "observation_end": report["observation_end"],
         "coverage": {
             "discovery_method": report["discovery_method"],
-            "discovered_nsfw_communities": report["communities_discovered"],
-            "note": (
-                "Observed public activity retrieved through authorized Reddit "
-                "API access; coverage may be incomplete for high-volume communities."
-            ),
+            "discovered_nsfw_communities": report["nsfw_communities_discovered"],
+            "discovered_sfw_communities": report["sfw_communities_discovered"],
+            "note": "Observed public activity retrieved through authorized Reddit API access; discovery and historical retrieval may be incomplete.",
         },
         "method": {
             "measure": "observed audience overlap",
-            "definition": (
-                "Unique public participants observed in both communities "
-                "during the observation window."
-            ),
+            "definition": "Unique public participants observed in both communities during the observation window.",
             "private_subscriptions": False,
             "participant_level_data_persisted": False,
         },
@@ -165,9 +163,7 @@ def build_network(observed, report):
     }
 
     DATA.mkdir(exist_ok=True)
-    (DATA / "network.json").write_text(
-        json.dumps(network, indent=2), encoding="utf-8"
-    )
+    (DATA / "network.json").write_text(json.dumps(network, indent=2), encoding="utf-8")
     print(f"Wrote aggregate network: {len(nodes)} nodes, {len(edges)} edges")
 
 
@@ -175,18 +171,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--days", type=int, default=90)
     parser.add_argument("--discovery-limit", type=int, default=100)
+    parser.add_argument("--sfw-discovery-limit", type=int, default=100)
     args = parser.parse_args()
 
     load_dotenv(ROOT / ".env")
     client_id = os.getenv("REDDIT_CLIENT_ID")
     client_secret = os.getenv("REDDIT_CLIENT_SECRET")
     user_agent = os.getenv("REDDIT_USER_AGENT")
-
     if not all([client_id, client_secret, user_agent]):
-        raise SystemExit(
-            "Set REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET and "
-            "REDDIT_USER_AGENT in .env"
-        )
+        raise SystemExit("Set REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET and REDDIT_USER_AGENT in .env")
 
     reddit = praw.Reddit(
         client_id=client_id,
@@ -199,23 +192,31 @@ def main():
     cutoff = now - timedelta(days=args.days)
     observed = defaultdict(set)
 
-    communities = discover_nsfw(reddit, args.discovery_limit)
-    print(
-        f"Discovered {len(communities)} NSFW communities "
-        "from available discovery surfaces."
-    )
+    nsfw_communities = discover_communities(reddit, args.discovery_limit, nsfw=True)
+    sfw_communities = discover_communities(reddit, args.sfw_discovery_limit, nsfw=False)
+    communities = {**nsfw_communities, **sfw_communities}
 
     report = {
         "observation_days": args.days,
         "observation_start": cutoff.isoformat(),
         "observation_end": now.isoformat(),
         "discovery_limit": args.discovery_limit,
-        "discovery_method": (
-            "Reddit subreddit listings plus keyword searches; "
-            "not a guaranteed census."
-        ),
+        "sfw_discovery_limit": args.sfw_discovery_limit,
+        "discovery_method": "Reddit subreddit listings plus keyword searches across separate NSFW and SFW discovery universes; not a guaranteed census.",
+        "nsfw_communities_discovered": len(nsfw_communities),
+        "sfw_communities_discovered": len(sfw_communities),
         "communities_discovered": len(communities),
         "collection": {},
+    }
+
+    report["communities"] = {
+        name: {
+            "label": item["label"],
+            "nsfw": item["nsfw"],
+            "type": "NSFW" if item["nsfw"] else "SFW",
+            "discovery_sources": item["discovery_sources"],
+        }
+        for name, item in communities.items()
     }
 
     for index, name in enumerate(sorted(communities), 1):
@@ -227,21 +228,8 @@ def main():
         except Exception as exc:
             report["collection"][name] = {"error": str(exc)}
 
-    report["communities"] = {
-        name: {
-            "label": item["label"],
-            "nsfw": True,
-            "discovery_sources": item["discovery_sources"],
-        }
-        for name, item in communities.items()
-    }
-
     DATA.mkdir(exist_ok=True)
-    (DATA / "collection_report.json").write_text(
-        json.dumps(report, indent=2), encoding="utf-8"
-    )
-
-    # Participant IDs exist only in process memory and are never serialized.
+    (DATA / "collection_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     build_network(observed, report)
 
 
