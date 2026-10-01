@@ -10,9 +10,9 @@ It does **not** measure private subreddit subscriptions and should not be descri
 
 ## Current prototype
 
-The current collector is designed around a 90-day observation window and automatically discovers NSFW communities through available Reddit subreddit listings and keyword searches. Discovery is a coverage strategy, not a census of Reddit.
+The current collector is designed around a 90-day observation window and discovers two separate community universes: NSFW communities and a broader SFW comparison set. The SFW set is discovered through public subreddit listings and topical keyword searches. Discovery is a coverage strategy, not a census of Reddit.
 
-The newsroom interface presents aggregate community-level results as an interactive network map.
+The newsroom interface presents aggregate community-level results as an interactive network map. Edges are labeled by crossover type so reporters can distinguish NSFW-to-NSFW from NSFW-to-SFW relationships.
 
 ## Privacy approach
 
@@ -51,7 +51,7 @@ Before production use, review Reddit's current Data API terms, Developer Terms, 
 4. Add authorized Reddit OAuth credentials to `.env`.
 5. Run the 90-day collector:
 
-   `python3 src/collect_reddit.py --days 90 --discovery-limit 100`
+   `python3 src/collect_reddit.py --days 90 --discovery-limit 100 --sfw-discovery-limit 100`
 
 The collector writes only aggregate results to `data/`.
 
@@ -66,8 +66,8 @@ Then open `http://localhost:8000` in a browser.
 ## Methodological limitations
 
 - Public participation is not the same thing as subscription.
-- The automatic NSFW discovery process does not guarantee complete discovery of every NSFW subreddit.
-- Reddit listings and API access can limit historical coverage, particularly for high-volume communities.
+- Neither the NSFW nor SFW discovery process guarantees complete discovery of every subreddit.
+- Reddit listings and API access can limit historical coverage, particularly for high-volume communities. The SFW comparison universe is a sampled discovery set, not all SFW Reddit.
 - The results represent the specified observation window rather than a permanent audience relationship.
 - A community can have observed participants without every participant being captured by the available API retrieval process.
 
