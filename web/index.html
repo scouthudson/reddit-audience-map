@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reddit Audience Overlap</title>
+<style>
+body{margin:0;font-family:Arial,sans-serif;background:#f6f6f3;color:#111}
+header{background:#111;color:#fff;padding:24px 30px;border-bottom:4px solid #8b2f55}
+main{display:grid;grid-template-columns:260px 1fr 320px;min-height:calc(100vh - 100px)}
+aside,.detail{background:#fff;padding:20px;border-right:1px solid #ddd}
+.detail{border-left:1px solid #ddd;border-right:0}
+.map{position:relative;min-height:600px}svg{width:100%;height:100%}
+button,input{padding:8px;margin:3px}button{background:#fff;border:1px solid #bbb}
+.edge{stroke:#999;stroke-opacity:.35}.node{cursor:pointer}.node text{font-size:11px}
+.note{font-size:13px;line-height:1.5;color:#555}
+@media(max-width:1000px){main{grid-template-columns:220px 1fr}.detail{display:none}}
+</style>
+</head>
+<body>
+<header><h1>Reddit Audience Overlap</h1>
+<p>Publicly observed participation across communities · 90-day observation window</p></header>
+<main>
+<aside>
+<h3>Dataset</h3>
+<button id="demo">Demo</button><button id="real">Load data</button>
+<h3>Search</h3><input id="search" placeholder="subreddit">
+<h3>Minimum shared participants</h3><input id="min" type="range" min="1" max="500" value="10">
+<p id="minlabel">10</p>
+<div class="note"><b>Method:</b> observed audience overlap counts unique Reddit accounts that publicly posted or commented in both communities during the observation period. It does not measure private subscriptions.</div>
+</aside>
+<section class="map"><svg id="svg"></svg></section>
+<section class="detail" id="detail"><h3>About this dataset</h3>
+<p class="note">Load the demo to explore the interface, or run the collector and load its aggregate network data.</p></section>
+</main>
+<script>
+const demo={observation_days:90,nodes:[
+{id:"CommunityA",label:"r/CommunityA",type:"NSFW",observed_users:4200},
+{id:"CommunityB",label:"r/CommunityB",type:"NSFW",observed_users:3100},
+{id:"CommunityC",label:"r/CommunityC",type:"NSFW",observed_users:2200},
+{id:"CommunityD",label:"r/CommunityD",type:"SFW",observed_users:7200}],
+edges:[
+{source:"CommunityA",target:"CommunityB",shared_users:980,overlap_a:.233,overlap_b:.316},
+{source:"CommunityA",target:"CommunityC",shared_users:640,overlap_a:.152,overlap_b:.291},
+{source:"CommunityA",target:"CommunityD",shared_users:510,overlap_a:.121,overlap_b:.071},
+{source:"CommunityB",target:"CommunityD",shared_users:410,overlap_a:.132,overlap_b:.057}]};
+let data=demo,minShared=10,query="";
+const svg=document.getElementById("svg");
+function render(){
+svg.innerHTML="";
+const W=svg.clientWidth,H=svg.clientHeight;
+const nodes=data.nodes.filter(n=>n.label.toLowerCase().includes(query.toLowerCase()));
+const ids=new Set(nodes.map(n=>n.id));
+const edges=data.edges.filter(e=>e.shared_users>=minShared&&ids.has(e.source)&&ids.has(e.target));
+const pos={};
+nodes.forEach((n,i)=>{const a=i/nodes.length*Math.PI*2;pos[n.id]={x:W/2+Math.cos(a)*Math.min(W,H)*.32,y:H/2+Math.sin(a)*Math.min(W,H)*.32}});
+edges.forEach(e=>{const l=document.createElementNS("http://www.w3.org/2000/svg","line");l.setAttribute("x1",pos[e.source].x);l.setAttribute("y1",pos[e.source].y);l.setAttribute("x2",pos[e.target].x);l.setAttribute("y2",pos[e.target].y);l.setAttribute("class","edge");l.setAttribute("stroke-width",Math.max(1,Math.min(10,e.shared_users/100)));svg.appendChild(l)});
+nodes.forEach(n=>{const g=document.createElementNS("http://www.w3.org/2000/svg","g");g.classList.add("node");g.onclick=()=>show(n);const c=document.createElementNS("http://www.w3.org/2000/svg","circle");c.setAttribute("cx",pos[n.id].x);c.setAttribute("cy",pos[n.id].y);c.setAttribute("r",Math.max(7,Math.min(25,6+Math.sqrt(n.observed_users)/8)));c.setAttribute("fill",n.type==="NSFW"?"#8b2f55":"#555");g.appendChild(c);const t=document.createElementNS("http://www.w3.org/2000/svg","text");t.setAttribute("x",pos[n.id].x+10);t.setAttribute("y",pos[n.id].y+4);t.textContent=n.label;g.appendChild(t);svg.appendChild(g)});
+}
+function show(n){const links=data.edges.filter(e=>(e.source===n.id||e.target===n.id)&&e.shared_users>=minShared).sort((a,b)=>b.shared_users-a.shared_users);document.getElementById("detail").innerHTML="<h3>"+n.label+"</h3><p><b>"+n.observed_users.toLocaleString()+"</b> observed participants</p><h3>Strongest overlaps</h3>"+links.map(e=>{const other=e.source===n.id?e.target:e.source;const pct=e.source===n.id?e.overlap_a:e.overlap_b;return "<p><b>r/"+other+"</b><br>"+e.shared_users.toLocaleString()+" shared · "+(pct*100).toFixed(1)+"% of this community</p>"}).join("")}
+document.getElementById("min").oninput=e=>{minShared=+e.target.value;document.getElementById("minlabel").textContent=minShared;render()};
+document.getElementById("search").oninput=e=>{query=e.target.value;render()};
+document.getElementById("demo").onclick=()=>{data=demo;render()};
+document.getElementById("real").onclick=async()=>{try{data=await (await fetch("../data/network.json")).json();render()}catch(e){document.getElementById("detail").innerHTML="<b>Could not load data/network.json.</b> Run the collector first."}};
+window.onresize=render;render();
+</script>
+</body>
+</html>
