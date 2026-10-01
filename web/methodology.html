@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Methodology & Provenance — Reddit Audience Overlap</title>
+<style>
+body{margin:0;font-family:Arial,sans-serif;background:#f6f6f3;color:#111;line-height:1.55}
+header{background:#111;color:#fff;padding:28px 30px;border-bottom:4px solid #8b2f55}
+header a{color:#fff;text-decoration:none;font-size:13px}
+header h1{margin:12px 0 6px;font-size:30px}
+header p{margin:0;color:#ddd;max-width:850px}
+main{max-width:1100px;margin:0 auto;padding:32px 24px 70px}
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:20px}
+section,.fact{background:#fff;border:1px solid #ddd;padding:22px;margin-bottom:18px}
+h2{margin-top:0;font-size:20px}
+h3{font-size:15px;margin-bottom:7px}
+.fact strong{display:block;font-size:25px;margin-bottom:4px}
+.kicker{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#777;font-weight:bold}
+.callout{border-left:4px solid #8b2f55;background:#faf8f9;padding:16px;margin:18px 0}
+ul{padding-left:22px}
+code{background:#eee;padding:2px 4px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:9px;border-bottom:1px solid #ddd;vertical-align:top}
+th{background:#111;color:#fff}
+a{color:#7a2449}
+footer{max-width:1100px;margin:0 auto;padding:0 24px 40px;color:#666;font-size:12px}
+@media(max-width:800px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+<a href="./index.html">← Back to Audience Map</a>
+<h1>Methodology &amp; Data Provenance</h1>
+<p>How the Reddit Audience Overlap project collects, defines, compares, and publishes community-level results.</p>
+</header>
+<main>
+<div class="grid">
+<div>
+<section>
+<div class="kicker">What this measures</div>
+<h2>Observed audience overlap</h2>
+<p>The project measures <strong>unique Reddit accounts that publicly posted or commented in both communities during the defined observation window.</strong></p>
+<div class="callout"><strong>This is not subscriber overlap.</strong> Reddit does not expose a user's private list of subscribed subreddits through the public data model used by this project. The map therefore describes observed public participation, not private membership.</div>
+<p>For two communities A and B:</p>
+<table>
+<tr><th>Measure</th><th>Definition</th></tr>
+<tr><td>Shared participants</td><td>Unique observed accounts appearing in both A and B.</td></tr>
+<tr><td>Overlap A → B</td><td>Shared participants divided by observed participants in A.</td></tr>
+<tr><td>Overlap B → A</td><td>Shared participants divided by observed participants in B.</td></tr>
+<tr><td>Jaccard</td><td>Shared participants divided by the union of observed participants in A and B.</td></tr>
+</table>
+</section>
+
+<section>
+<div class="kicker">Observation window</div>
+<h2>Time matters</h2>
+<p>The default collection window is the <strong>90 days immediately preceding a collection run</strong>. A collector run can also specify an explicit UTC end time with <code>--end</code>, allowing a reproducible historical window.</p>
+<p>Each saved snapshot records the observation period. The interface can compare two saved snapshots and report relationships that appeared, disappeared, grew, or declined.</p>
+<p>A change between snapshots should be interpreted as a change in <em>observed public participation</em>, not proof that the underlying private audience changed by the same amount.</p>
+</section>
+
+<section>
+<div class="kicker">Collection</div>
+<h2>How communities are discovered</h2>
+<p>The collector builds two comparison universes:</p>
+<ul>
+<li><strong>NSFW:</strong> discovered from a set of adult-oriented seed communities and public discovery surfaces.</li>
+<li><strong>SFW:</strong> discovered from broad topical seeds such as news, technology, science, sports, gaming, books, food, travel, education, art, and history.</li>
+</ul>
+<p>Discovery uses public Reddit listings and keyword search surfaces. It is a <strong>coverage strategy, not a census of Reddit.</strong> The SFW universe is therefore a comparison sample rather than “all SFW Reddit.”</p>
+<p>For each discovered community, the collector retrieves public posts and comments within the observation window and records the observed account identifiers only temporarily in memory for matching.</p>
+</section>
+
+<section>
+<div class="kicker">Matching &amp; aggregation</div>
+<h2>From activity to network</h2>
+<ol>
+<li>Collect qualifying public activity for each discovered community.</li>
+<li>Associate each activity item with its public Reddit account identifier.</li>
+<li>Build an in-memory participant set for each community.</li>
+<li>Intersect those sets pairwise to calculate shared-participant counts.</li>
+<li>Calculate directional overlap and Jaccard measures from the aggregate sets.</li>
+<li>Write only aggregate community-level results to the published dataset.</li>
+</ol>
+<p>The published network contains communities and relationships, not participant-level records.</p>
+</section>
+
+<section>
+<div class="kicker">Coverage limitations</div>
+<h2>What can make results incomplete?</h2>
+<ul>
+<li>Community discovery does not guarantee every relevant subreddit is found.</li>
+<li>Reddit listing/API retrieval can limit historical coverage, especially in high-volume communities.</li>
+<li>The collector's retrieved activity is bounded by the available public listing surfaces and configured retrieval limits.</li>
+<li>Changes between snapshots can reflect discovery or retrieval differences as well as actual changes in observed participation.</li>
+<li>Deleted or otherwise unavailable activity may not be represented.</li>
+</ul>
+<p>These limitations are part of the dataset's provenance and should accompany published findings.</p>
+</section>
+</div>
+
+<aside>
+<div class="fact"><div class="kicker">Default window</div><strong>90 days</strong>Immediately preceding each collection run.</div>
+<div class="fact"><div class="kicker">Published unit</div><strong>Community</strong>Aggregate results; no participant IDs.</div>
+<div class="fact"><div class="kicker">Universe</div><strong>NSFW + SFW</strong>SFW is a sampled comparison universe.</div>
+<div class="fact"><div class="kicker">Primary output</div><strong>network.json</strong>Latest aggregate snapshot.</div>
+
+<section>
+<div class="kicker">Provenance fields</div>
+<h2>Every snapshot should tell you</h2>
+<ul>
+<li>Observation start and end</li>
+<li>Collection timestamp</li>
+<li>Discovered communities</li>
+<li>Community type and discovery source</li>
+<li>Relationship counts and aggregate measures</li>
+<li>Collector/report metadata</li>
+</ul>
+</section>
+
+<section>
+<div class="kicker">Reporting language</div>
+<h2>Preferred wording</h2>
+<p><strong>Use:</strong> “Among Reddit accounts observed publicly participating in both communities during the study period…”</p>
+<p><strong>Avoid:</strong> “X% of subscribers overlap,” unless an independent source actually establishes subscriber membership.</p>
+</section>
+</aside>
+</div>
+
+<section>
+<div class="kicker">Data handling</div>
+<h2>Privacy and retention</h2>
+<p>Participant identifiers are used only in memory during a collection run. The collector does not intentionally write usernames, Reddit user IDs, post bodies, or participant-level identifiers to the published output.</p>
+<p>Persisted project outputs are aggregate files such as <code>data/network.json</code>, timestamped network snapshots, and a collection report. Before production publication, the project should be operated under Reddit's then-current API, Developer Terms, Responsible Builder Policy, and applicable deletion requirements.</p>
+</section>
+
+<section>
+<div class="kicker">External documentation</div>
+<h2>Reddit API context</h2>
+<p>Reddit's current developer documentation describes the API as providing access to Reddit content such as posts and comments, while its Developer Platform documentation states that private user data such as subscribed-subreddit lists is not exposed through Devvit.</p>
+<p><a href="https://www.reddit.com/dev/api/" target="_blank" rel="noopener">Reddit API documentation</a> · <a href="https://developers.reddit.com/docs/capabilities/server/reddit-api" target="_blank" rel="noopener">Reddit API overview</a> · <a href="https://developers.reddit.com/app-registration" target="_blank" rel="noopener">Reddit app registration</a></p>
+</section>
+</main>
+<footer>Reddit Audience Overlap · Methodology version: prototype · This page describes the current collector design and should be updated when collection logic changes.</footer>
+</body>
+</html>
