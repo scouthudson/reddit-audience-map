@@ -44,22 +44,22 @@ edges:[
 {source:"CommunityA",target:"CommunityC",shared_users:640,overlap_a:.152,overlap_b:.291},
 {source:"CommunityA",target:"CommunityD",shared_users:510,overlap_a:.121,overlap_b:.071},
 {source:"CommunityB",target:"CommunityD",shared_users:410,overlap_a:.132,overlap_b:.057}]};
-let data=demo,minShared=10,query="";
+let data=demo,minShared=10,query="",relationship="ALL";
 const svg=document.getElementById("svg");
 function render(){
 svg.innerHTML="";
 const W=svg.clientWidth,H=svg.clientHeight;
 const nodes=data.nodes.filter(n=>n.label.toLowerCase().includes(query.toLowerCase()));
 const ids=new Set(nodes.map(n=>n.id));
-const edges=data.edges.filter(e=>e.shared_users>=minShared&&ids.has(e.source)&&ids.has(e.target));
+const edges=data.edges.filter(e=>e.shared_users>=minShared&&ids.has(e.source)&&ids.has(e.target)&&(relationship==="ALL"||e.crossover===relationship));
 const pos={};
 nodes.forEach((n,i)=>{const a=i/nodes.length*Math.PI*2;pos[n.id]={x:W/2+Math.cos(a)*Math.min(W,H)*.32,y:H/2+Math.sin(a)*Math.min(W,H)*.32}});
 edges.forEach(e=>{const l=document.createElementNS("http://www.w3.org/2000/svg","line");l.setAttribute("x1",pos[e.source].x);l.setAttribute("y1",pos[e.source].y);l.setAttribute("x2",pos[e.target].x);l.setAttribute("y2",pos[e.target].y);l.setAttribute("class","edge");l.setAttribute("stroke-width",Math.max(1,Math.min(10,e.shared_users/100)));svg.appendChild(l)});
 nodes.forEach(n=>{const g=document.createElementNS("http://www.w3.org/2000/svg","g");g.classList.add("node");g.onclick=()=>show(n);const c=document.createElementNS("http://www.w3.org/2000/svg","circle");c.setAttribute("cx",pos[n.id].x);c.setAttribute("cy",pos[n.id].y);c.setAttribute("r",Math.max(7,Math.min(25,6+Math.sqrt(n.observed_users)/8)));c.setAttribute("fill",n.type==="NSFW"?"#8b2f55":"#555");g.appendChild(c);const t=document.createElementNS("http://www.w3.org/2000/svg","text");t.setAttribute("x",pos[n.id].x+10);t.setAttribute("y",pos[n.id].y+4);t.textContent=n.label;g.appendChild(t);svg.appendChild(g)});
 }
-function show(n){const links=data.edges.filter(e=>(e.source===n.id||e.target===n.id)&&e.shared_users>=minShared).sort((a,b)=>b.shared_users-a.shared_users);document.getElementById("detail").innerHTML="<h3>"+n.label+"</h3><p><b>"+n.observed_users.toLocaleString()+"</b> observed participants</p><h3>Strongest overlaps</h3>"+links.map(e=>{const other=e.source===n.id?e.target:e.source;const pct=e.source===n.id?e.overlap_a:e.overlap_b;return "<p><b>r/"+other+"</b><br>"+e.shared_users.toLocaleString()+" shared · "+(pct*100).toFixed(1)+"% of this community</p>"}).join("")}
+function show(n){const links=data.edges.filter(e=>(e.source===n.id||e.target===n.id)&&e.shared_users>=minShared&&(relationship==="ALL"||e.crossover===relationship)).sort((a,b)=>b.shared_users-a.shared_users);document.getElementById("detail").innerHTML="<h3>"+n.label+"</h3><p><b>"+n.observed_users.toLocaleString()+"</b> observed participants</p><h3>Strongest overlaps</h3>"+links.map(e=>{const other=e.source===n.id?e.target:e.source;const pct=e.source===n.id?e.overlap_a:e.overlap_b;return "<p><b>r/"+other+"</b><br>"+e.shared_users.toLocaleString()+" shared · "+(pct*100).toFixed(1)+"% of this community</p>"}).join("")}
 document.getElementById("min").oninput=e=>{minShared=+e.target.value;document.getElementById("minlabel").textContent=minShared;render()};
-document.getElementById("search").oninput=e=>{query=e.target.value;render()};
+document.getElementById("search").oninput=e=>{query=e.target.value;render()};document.getElementById("rel").onchange=e=>{relationship=e.target.value;render()};
 document.getElementById("demo").onclick=()=>{data=demo;render()};
 document.getElementById("real").onclick=async()=>{try{data=await (await fetch("../data/network.json")).json();render()}catch(e){document.getElementById("detail").innerHTML="<b>Could not load data/network.json.</b> Run the collector first."}};
 window.onresize=render;render();
