@@ -29,7 +29,7 @@ button,input{padding:8px;margin:3px}button{background:#fff;border:1px solid #bbb
 <p id="minlabel">10</p>
 <div class="note"><b>Method:</b> observed audience overlap counts unique Reddit accounts that publicly posted or commented in both communities during the observation period. It does not measure private subscriptions.</div>
 </aside>
-<section class="map"><svg id="svg"></svg></section>
+<section class="map"><svg id="svg"></svg><div id="compare" style="display:none;padding:20px"></div></section>
 <section class="detail" id="detail"><h3>About this dataset</h3>
 <p class="note">Load the demo to explore the interface, or run the collector and load its aggregate network data.</p></section>
 </main>
@@ -46,6 +46,15 @@ edges:[
 {source:"CommunityB",target:"CommunityD",shared_users:410,overlap_a:.132,overlap_b:.057}]};
 let data=demo,minShared=10,query="",relationship="ALL";
 const svg=document.getElementById("svg");
+function download(name,text,type="text/plain"){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();URL.revokeObjectURL(a.href)}
+function esc(v){return '"' + String(v??"").replaceAll('"','""') + '"'}
+function exportEdges(){const rows=[["source","target","crossover","shared_users","overlap_source","overlap_target","jaccard"]];visibleEdges().forEach(e=>rows.push([e.source,e.target,e.crossover,e.shared_users,e.overlap_a,e.overlap_b,e.jaccard]));download("reddit_overlap_edges.csv",rows.map(r=>r.map(esc).join(",")).join("\n"),"text/csv")}
+function exportNodes(){const rows=[["community","type","observed_users"]];visibleNodes().forEach(n=>rows.push([n.id,n.type,n.observed_users]));download("reddit_overlap_communities.csv",rows.map(r=>r.map(esc).join(",")).join("\n"),"text/csv")}
+function exportJson(){download("reddit_audience_map.json",JSON.stringify({...data,exported_at:new Date().toISOString(),filters:{search:query,relationship,min_shared:minShared}},null,2),"application/json")}
+function aKey(e){return [e.source,e.target].sort().join("::")}
+function visibleNodes(){return data.nodes.filter(n=>n.label.toLowerCase().includes(query.toLowerCase()))}
+function visibleEdges(){const ids=new Set(visibleNodes().map(n=>n.id));return data.edges.filter(e=>e.shared_users>=minShared&&ids.has(e.source)&&ids.has(e.target)&&(relationship==="ALL"||e.crossover===relationship))}
+function comparePeriods(a,b){const ma=new Map(a.edges.map(e=>[aKey(e),e])),mb=new Map(b.edges.map(e=>[aKey(e),e])),keys=[...new Set([...ma.keys(),...mb.keys()])];const rows=keys.map(k=>{const x=ma.get(k),y=mb.get(k),old=x?.shared_users||0,now=y?.shared_users||0;return{source:y?.source||x.source,target:y?.target||x.target,crossover:y?.crossover||x.crossover,old,now,delta:now-old,jdelta:((y?.jaccard||0)-(x?.jaccard||0))*100}}).sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta));const box=document.getElementById("compare");document.getElementById("svg").style.display="none";box.style.display="block";box.innerHTML="<h3>Period comparison</h3><p class=\"note\">"+(a.observation_start||"A")+" → "+(b.observation_start||"B")+"</p><table><tr><th>Relationship</th><th>Shared A</th><th>Shared B</th><th>Δ</th><th>Jaccard Δ</th></tr>"+rows.slice(0,100).map(r=>"<tr><td>r/"+r.source+" ↔ r/"+r.target+"<br><span class=\"small\">"+r.crossover+"</span></td><td>"+r.old+"</td><td>"+r.now+"</td><td>"+(r.delta>0?"+":"")+r.delta+"</td><td>"+r.jdelta.toFixed(2)+" pp</td></tr>").join("")+"</table>"}
 function render(){
 svg.innerHTML="";
 const W=svg.clientWidth,H=svg.clientHeight;
@@ -69,6 +78,7 @@ html+=crossover.length?crossover.slice(0,8).map(e=>{const other=e.source===n.id?
 html+="<h3>Strongest overlaps</h3>"+strongest.map(e=>{const other=e.source===n.id?e.target:e.source;const pct=e.source===n.id?e.overlap_a:e.overlap_b;return "<p><b>r/"+other+"</b> <span class='note'>"+(e.crossover||"")+"</span><br>"+e.shared_users.toLocaleString()+" shared · "+(pct*100).toFixed(1)+"% of this community</p>"}).join("");
 document.getElementById("detail").innerHTML=html;
 }
+document.getElementById("csvEdges").onclick=exportEdges;document.getElementById("csvNodes").onclick=exportNodes;document.getElementById("jsonExport").onclick=exportJson;document.getElementById("compareBtn").onclick=async()=>{try{const a=await (await fetch(document.getElementById("periodA").value)).json(),b=await (await fetch(document.getElementById("periodB").value)).json();comparePeriods(a,b)}catch(e){document.getElementById("detail").innerHTML="<b>Could not load one or both comparison files.</b>"}};
 document.getElementById("min").oninput=e=>{minShared=+e.target.value;document.getElementById("minlabel").textContent=minShared;render()};
 document.getElementById("search").oninput=e=>{query=e.target.value;render()};document.getElementById("rel").onchange=e=>{relationship=e.target.value;render()};
 document.getElementById("demo").onclick=()=>{data=demo;render()};
