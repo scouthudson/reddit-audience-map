@@ -25,7 +25,7 @@ button,input{padding:8px;margin:3px}button{background:#fff;border:1px solid #bbb
 <h3>Dataset</h3>
 <button id="demo">Demo</button><button id="real">Load data</button>
 <h3>Search</h3><input id="search" placeholder="subreddit">
-<h3>Minimum shared participants</h3><input id="min" type="range" min="1" max="500" value="10">
+<h3>Relationship</h3><select id="rel"><option value="ALL">All relationships</option><option value="NSFW-SFW">NSFW ↔ SFW</option><option value="NSFW-NSFW">NSFW ↔ NSFW</option><option value="SFW-SFW">SFW ↔ SFW</option></select><h3>Minimum shared participants</h3><input id="min" type="range" min="1" max="500" value="10">
 <p id="minlabel">10</p>
 <div class="note"><b>Method:</b> observed audience overlap counts unique Reddit accounts that publicly posted or commented in both communities during the observation period. It does not measure private subscriptions.</div>
 </aside>
