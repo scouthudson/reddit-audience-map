@@ -55,29 +55,20 @@ function exportJson(){download("reddit_audience_map.json",JSON.stringify({...dat
 function aKey(e){return [e.source,e.target].sort().join("::")}
 function visibleNodes(){return data.nodes.filter(n=>n.label.toLowerCase().includes(query.toLowerCase()))}
 function visibleEdges(){const ids=new Set(visibleNodes().map(n=>n.id));return data.edges.filter(e=>e.shared_users>=minShared&&ids.has(e.source)&&ids.has(e.target)&&(relationship==="ALL"||e.crossover===relationship))}
-function comparePeriods(a,b){const ma=new Map(a.edges.map(e=>[aKey(e),e])),mb=new Map(b.edges.map(e=>[aKey(e),e])),keys=[...new Set([...ma.keys(),...mb.keys()])];const rows=keys.map(k=>{const x=ma.get(k),y=mb.get(k),old=x?.shared_users||0,now=y?.shared_users||0;return{source:y?.source||x.source,target:y?.target||x.target,crossover:y?.crossover||x.crossover,old,now,delta:now-old,jdelta:((y?.jaccard||0)-(x?.jaccard||0))*100}}).sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta));const box=document.getElementById("compare");document.getElementById("svg").style.display="none";box.style.display="block";box.innerHTML="<h3>Period comparison</h3><p class=\"note\">"+(a.observation_start||"A")+" → "+(b.observation_start||"B")+"</p><table><tr><th>Relationship</th><th>Shared A</th><th>Shared B</th><th>Δ</th><th>Jaccard Δ</th></tr>"+rows.slice(0,100).map(r=>"<tr><td>r/"+r.source+" ↔ r/"+r.target+"<br><span class=\"small\">"+r.crossover+"</span></td><td>"+r.old+"</td><td>"+r.now+"</td><td>"+(r.delta>0?"+":"")+r.delta+"</td><td>"+r.jdelta.toFixed(2)+" pp</td></tr>").join("")+"</table>"}
-function render(){document.getElementById("compare").style.display="none";svg.style.display="block";
-svg.innerHTML="";
-const W=svg.clientWidth,H=svg.clientHeight;
-const nodes=data.nodes.filter(n=>n.label.toLowerCase().includes(query.toLowerCase()));
-const ids=new Set(nodes.map(n=>n.id));
-const edges=data.edges.filter(e=>e.shared_users>=minShared&&ids.has(e.source)&&ids.has(e.target)&&(relationship==="ALL"||e.crossover===relationship));
-const pos={};
-nodes.forEach((n,i)=>{const a=i/nodes.length*Math.PI*2;pos[n.id]={x:W/2+Math.cos(a)*Math.min(W,H)*.32,y:H/2+Math.sin(a)*Math.min(W,H)*.32}});
-edges.forEach(e=>{const l=document.createElementNS("http://www.w3.org/2000/svg","line");l.setAttribute("x1",pos[e.source].x);l.setAttribute("y1",pos[e.source].y);l.setAttribute("x2",pos[e.target].x);l.setAttribute("y2",pos[e.target].y);l.setAttribute("class","edge");l.setAttribute("stroke-width",Math.max(1,Math.min(10,e.shared_users/100)));svg.appendChild(l)});
-nodes.forEach(n=>{const g=document.createElementNS("http://www.w3.org/2000/svg","g");g.classList.add("node");g.onclick=()=>show(n);const c=document.createElementNS("http://www.w3.org/2000/svg","circle");c.setAttribute("cx",pos[n.id].x);c.setAttribute("cy",pos[n.id].y);c.setAttribute("r",Math.max(7,Math.min(25,6+Math.sqrt(n.observed_users)/8)));c.setAttribute("fill",n.type==="NSFW"?"#8b2f55":"#555");g.appendChild(c);const t=document.createElementNS("http://www.w3.org/2000/svg","text");t.setAttribute("x",pos[n.id].x+10);t.setAttribute("y",pos[n.id].y+4);t.textContent=n.label;g.appendChild(t);svg.appendChild(g)});
-}
-function show(n){
-const links=data.edges.filter(e=>(e.source===n.id||e.target===n.id)&&e.shared_users>=minShared).sort((a,b)=>b.shared_users-a.shared_users);
-const crossover=links.filter(e=>e.crossover==="NSFW-SFW");
-const strongest=links.slice(0,8);
-let html="<h3>"+n.label+"</h3><p><b>"+n.observed_users.toLocaleString()+"</b> observed participants</p>";
-if(n.type==="NSFW"){
-html+="<h3>SFW crossover</h3>";
-html+=crossover.length?crossover.slice(0,8).map(e=>{const other=e.source===n.id?e.target:e.source;const pct=e.source===n.id?e.overlap_a:e.overlap_b;return "<p><b>r/"+other+"</b><br>"+e.shared_users.toLocaleString()+" shared · "+(pct*100).toFixed(1)+"% of this community</p>"}).join(""):"<p class='note'>No NSFW↔SFW edges meet the current threshold.</p>";
-}
-html+="<h3>Strongest overlaps</h3>"+strongest.map(e=>{const other=e.source===n.id?e.target:e.source;const pct=e.source===n.id?e.overlap_a:e.overlap_b;return "<p><b>r/"+other+"</b> <span class='note'>"+(e.crossover||"")+"</span><br>"+e.shared_users.toLocaleString()+" shared · "+(pct*100).toFixed(1)+"% of this community</p>"}).join("");
-document.getElementById("detail").innerHTML=html;
+function comparePeriods(a,b){
+ const ma=new Map(a.edges.map(e=>[aKey(e),e])), mb=new Map(b.edges.map(e=>[aKey(e),e]));
+ const keys=[...new Set([...ma.keys(),...mb.keys()])];
+ const rows=keys.map(k=>{const x=ma.get(k),y=mb.get(k),old=x?.shared_users||0,now=y?.shared_users||0;return{source:y?.source||x.source,target:y?.target||x.target,crossover:y?.crossover||x.crossover,old,now,delta:now-old,jdelta:((y?.jaccard||0)-(x?.jaccard||0))*100};}).filter(r=>r.old||r.now).sort((x,y)=>Math.abs(y.delta)-Math.abs(x.delta));
+ const added=rows.filter(r=>!r.old&&r.now),removed=rows.filter(r=>r.old&&!r.now),growing=rows.filter(r=>r.delta>0&&r.old),shrinking=rows.filter(r=>r.delta<0&&r.old);
+ const totalA=rows.reduce((s,r)=>s+r.old,0),totalB=rows.reduce((s,r)=>s+r.now,0);
+ const box=document.getElementById("compare");document.getElementById("svg").style.display="none";box.style.display="block";box.className="compare-wrap";
+ const item=(r)=>"<div><b>r/"+r.source+" ↔ r/"+r.target+"</b><br><span class='note'>"+r.old+" → "+r.now+" shared ("+(r.delta>0?"+":"")+r.delta+")</span></div>";
+ box.innerHTML="<h2>What changed between periods?</h2><p class='note'><b>Period A:</b> "+(a.observation_start||"unknown")+" → "+(a.observation_end||"unknown")+" &nbsp; <b>Period B:</b> "+(b.observation_start||"unknown")+" → "+(b.observation_end||"unknown")+"</p>"+
+ "<div class='cards'><div class='card'>Relationships compared<b>"+rows.length+"</b></div><div class='card'>Appeared<b>"+added.length+"</b></div><div class='card'>Disappeared<b>"+removed.length+"</b></div><div class='card'>Shared-participant sum Δ<b>"+(totalB-totalA>0?"+":"")+(totalB-totalA)+"</b></div></div>"+
+ "<div class='change-list'><div class='change-box'><h4>Largest increases</h4>"+(growing.slice(0,5).map(item).join("<hr>")||"<span class='note'>None</span>")+"</div><div class='change-box'><h4>Largest decreases</h4>"+(shrinking.slice(0,5).map(item).join("<hr>")||"<span class='note'>None</span>")+"</div></div>"+
+ "<p><span class='pill'>"+added.length+" appeared</span> <span class='pill'>"+removed.length+" disappeared</span> <span class='pill'>"+growing.length+" grew</span> <span class='pill'>"+shrinking.length+" declined</span></p>"+
+ "<table class='compare-table'><tr><th>Relationship</th><th>Type</th><th>Shared A → B</th><th>Δ</th><th>Jaccard Δ</th></tr>"+rows.slice(0,150).map(r=>"<tr><td><b>r/"+r.source+" ↔ r/"+r.target+"</b></td><td>"+r.crossover+"</td><td>"+r.old+" → "+r.now+"</td><td>"+(r.delta>0?"+":"")+r.delta+"</td><td>"+(r.jdelta>0?"+":"")+r.jdelta.toFixed(2)+" pp</td></tr>").join("")+"</table>"+
+ "<p class='note'><b>Reporting caution:</b> This describes changes in observed public participation. It does not establish changes in private subscriptions. Discovery and API retrieval differences can also affect the comparison.</p>";
 }
 document.getElementById("csvEdges").onclick=exportEdges;document.getElementById("csvNodes").onclick=exportNodes;document.getElementById("jsonExport").onclick=exportJson;document.getElementById("compareBtn").onclick=async()=>{try{const a=await (await fetch(document.getElementById("periodA").value)).json(),b=await (await fetch(document.getElementById("periodB").value)).json();comparePeriods(a,b)}catch(e){document.getElementById("detail").innerHTML="<b>Could not load one or both comparison files.</b>"}};
 document.getElementById("csvEdges").onclick=exportEdges;document.getElementById("csvNodes").onclick=exportNodes;document.getElementById("jsonExport").onclick=exportJson;document.getElementById("compareBtn").onclick=async()=>{try{const a=await(await fetch(document.getElementById("periodA").value)).json(),b=await(await fetch(document.getElementById("periodB").value)).json();comparePeriods(a,b)}catch(e){document.getElementById("detail").innerHTML="<b>Could not load one or both comparison files.</b>"}};
