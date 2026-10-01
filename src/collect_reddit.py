@@ -67,7 +67,7 @@ def discover_communities(reddit, limit, nsfw=True):
     return found
 
 
-def collect_posts_and_comments(reddit, sub_name, cutoff, observed):
+def collect_posts_and_comments(reddit, sub_name, cutoff, window_end, observed):
     sub = reddit.subreddit(sub_name)
     posts_seen = comments_seen = 0
     newest = oldest = None
@@ -78,6 +78,8 @@ def collect_posts_and_comments(reddit, sub_name, cutoff, observed):
         oldest = min(oldest, created) if oldest else created
         if created < cutoff:
             break
+        if created > window_end:
+            continue
 
         author_id = getattr(post, "author_fullname", None)
         if author_id:
@@ -88,7 +90,7 @@ def collect_posts_and_comments(reddit, sub_name, cutoff, observed):
             post.comments.replace_more(limit=0)
             for comment in post.comments.list():
                 ctime = datetime.fromtimestamp(comment.created_utc, tz=timezone.utc)
-                if ctime < cutoff:
+                if ctime < cutoff or ctime > window_end:
                     continue
                 cid = getattr(comment, "author_fullname", None)
                 if cid:
@@ -106,7 +108,7 @@ def collect_posts_and_comments(reddit, sub_name, cutoff, observed):
     }
 
 
-def build_network(observed, report):
+def build_network(observed, report, output_path):
     nodes = [
         {
             "id": name,
@@ -163,7 +165,8 @@ def build_network(observed, report):
     }
 
     DATA.mkdir(exist_ok=True)
-    (DATA / "network.json").write_text(json.dumps(network, indent=2), encoding="utf-8")
+    output_path.parent.mkdir(exist_ok=True)
+    output_path.write_text(json.dumps(network, indent=2), encoding="utf-8")
     print(f"Wrote aggregate network: {len(nodes)} nodes, {len(edges)} edges")
 
 
@@ -172,6 +175,8 @@ def main():
     parser.add_argument("--days", type=int, default=90)
     parser.add_argument("--discovery-limit", type=int, default=100)
     parser.add_argument("--sfw-discovery-limit", type=int, default=100)
+    parser.add_argument("--end", help="UTC window end in ISO format; defaults to now")
+    parser.add_argument("--output", help="Output JSON path; defaults to data/network_YYYYMMDD_YYYYMMDD.json")
     args = parser.parse_args()
 
     load_dotenv(ROOT / ".env")
@@ -189,6 +194,11 @@ def main():
     reddit.read_only = True
 
     now = datetime.now(timezone.utc)
+    if args.end:
+        now = datetime.fromisoformat(args.end.replace("Z", "+00:00"))
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
+        now = now.astimezone(timezone.utc)
     cutoff = now - timedelta(days=args.days)
     observed = defaultdict(set)
 
@@ -223,14 +233,17 @@ def main():
         print(f"[{index}/{len(communities)}] r/{name}")
         try:
             report["collection"][name] = collect_posts_and_comments(
-                reddit, name, cutoff, observed
+                reddit, name, cutoff, now, observed
             )
         except Exception as exc:
             report["collection"][name] = {"error": str(exc)}
 
     DATA.mkdir(exist_ok=True)
     (DATA / "collection_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
-    build_network(observed, report)
+    default_name = f"network_{cutoff:%Y%m%d}_{now:%Y%m%d}.json"
+    output_path = Path(args.output) if args.output else DATA / default_name
+    build_network(observed, report, output_path)
+    (DATA / "network.json").write_text(output_path.read_text(encoding="utf-8"), encoding="utf-8")
 
 
 if __name__ == "__main__":
