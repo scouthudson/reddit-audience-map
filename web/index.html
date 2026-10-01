@@ -27,6 +27,7 @@ button,input{padding:8px;margin:3px}button{background:#fff;border:1px solid #bbb
 <h3>Search</h3><input id="search" placeholder="subreddit">
 <h3>Relationship</h3><select id="rel"><option value="ALL">All relationships</option><option value="NSFW-SFW">NSFW ↔ SFW</option><option value="NSFW-NSFW">NSFW ↔ NSFW</option><option value="SFW-SFW">SFW ↔ SFW</option></select><h3>Minimum shared participants</h3><input id="min" type="range" min="1" max="500" value="10">
 <p id="minlabel">10</p>
+<hr><h3>Reporter tools</h3><button id="csvEdges">Export visible edges CSV</button><button id="csvNodes">Export visible communities CSV</button><button id="jsonExport">Export dataset JSON</button><p class="note">Aggregate fields only; no participant IDs or usernames.</p><hr><h3>Compare two periods</h3><input id="periodA" placeholder="data/network_YYYYMMDD_YYYYMMDD.json"><input id="periodB" placeholder="data/network_YYYYMMDD_YYYYMMDD.json"><button id="compareBtn">Compare periods</button><p class="note">Changes can reflect discovery/API coverage as well as observed participation.</p>
 <div class="note"><b>Method:</b> observed audience overlap counts unique Reddit accounts that publicly posted or commented in both communities during the observation period. It does not measure private subscriptions.</div>
 </aside>
 <section class="map"><svg id="svg"></svg><div id="compare" style="display:none;padding:20px"></div></section>
@@ -40,10 +41,10 @@ const demo={observation_days:90,nodes:[
 {id:"CommunityC",label:"r/CommunityC",type:"NSFW",observed_users:2200},
 {id:"CommunityD",label:"r/CommunityD",type:"SFW",observed_users:7200}],
 edges:[
-{source:"CommunityA",target:"CommunityB",shared_users:980,overlap_a:.233,overlap_b:.316},
-{source:"CommunityA",target:"CommunityC",shared_users:640,overlap_a:.152,overlap_b:.291},
-{source:"CommunityA",target:"CommunityD",shared_users:510,overlap_a:.121,overlap_b:.071},
-{source:"CommunityB",target:"CommunityD",shared_users:410,overlap_a:.132,overlap_b:.057}]};
+{source:"CommunityA",target:"CommunityB",shared_users:980,overlap_a:.233,overlap_b:.316,jaccard:.18,crossover:"NSFW-NSFW"},
+{source:"CommunityA",target:"CommunityC",shared_users:640,overlap_a:.152,overlap_b:.291,jaccard:.12,crossover:"NSFW-NSFW"},
+{source:"CommunityA",target:"CommunityD",shared_users:510,overlap_a:.121,overlap_b:.071,jaccard:.045,crossover:"NSFW-SFW"},
+{source:"CommunityB",target:"CommunityD",shared_users:410,overlap_a:.132,overlap_b:.057,jaccard:.04,crossover:"NSFW-SFW"}]};
 let data=demo,minShared=10,query="",relationship="ALL";
 const svg=document.getElementById("svg");
 function download(name,text,type="text/plain"){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();URL.revokeObjectURL(a.href)}
@@ -55,7 +56,7 @@ function aKey(e){return [e.source,e.target].sort().join("::")}
 function visibleNodes(){return data.nodes.filter(n=>n.label.toLowerCase().includes(query.toLowerCase()))}
 function visibleEdges(){const ids=new Set(visibleNodes().map(n=>n.id));return data.edges.filter(e=>e.shared_users>=minShared&&ids.has(e.source)&&ids.has(e.target)&&(relationship==="ALL"||e.crossover===relationship))}
 function comparePeriods(a,b){const ma=new Map(a.edges.map(e=>[aKey(e),e])),mb=new Map(b.edges.map(e=>[aKey(e),e])),keys=[...new Set([...ma.keys(),...mb.keys()])];const rows=keys.map(k=>{const x=ma.get(k),y=mb.get(k),old=x?.shared_users||0,now=y?.shared_users||0;return{source:y?.source||x.source,target:y?.target||x.target,crossover:y?.crossover||x.crossover,old,now,delta:now-old,jdelta:((y?.jaccard||0)-(x?.jaccard||0))*100}}).sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta));const box=document.getElementById("compare");document.getElementById("svg").style.display="none";box.style.display="block";box.innerHTML="<h3>Period comparison</h3><p class=\"note\">"+(a.observation_start||"A")+" → "+(b.observation_start||"B")+"</p><table><tr><th>Relationship</th><th>Shared A</th><th>Shared B</th><th>Δ</th><th>Jaccard Δ</th></tr>"+rows.slice(0,100).map(r=>"<tr><td>r/"+r.source+" ↔ r/"+r.target+"<br><span class=\"small\">"+r.crossover+"</span></td><td>"+r.old+"</td><td>"+r.now+"</td><td>"+(r.delta>0?"+":"")+r.delta+"</td><td>"+r.jdelta.toFixed(2)+" pp</td></tr>").join("")+"</table>"}
-function render(){
+function render(){document.getElementById("compare").style.display="none";svg.style.display="block";
 svg.innerHTML="";
 const W=svg.clientWidth,H=svg.clientHeight;
 const nodes=data.nodes.filter(n=>n.label.toLowerCase().includes(query.toLowerCase()));
@@ -79,6 +80,7 @@ html+="<h3>Strongest overlaps</h3>"+strongest.map(e=>{const other=e.source===n.i
 document.getElementById("detail").innerHTML=html;
 }
 document.getElementById("csvEdges").onclick=exportEdges;document.getElementById("csvNodes").onclick=exportNodes;document.getElementById("jsonExport").onclick=exportJson;document.getElementById("compareBtn").onclick=async()=>{try{const a=await (await fetch(document.getElementById("periodA").value)).json(),b=await (await fetch(document.getElementById("periodB").value)).json();comparePeriods(a,b)}catch(e){document.getElementById("detail").innerHTML="<b>Could not load one or both comparison files.</b>"}};
+document.getElementById("csvEdges").onclick=exportEdges;document.getElementById("csvNodes").onclick=exportNodes;document.getElementById("jsonExport").onclick=exportJson;document.getElementById("compareBtn").onclick=async()=>{try{const a=await(await fetch(document.getElementById("periodA").value)).json(),b=await(await fetch(document.getElementById("periodB").value)).json();comparePeriods(a,b)}catch(e){document.getElementById("detail").innerHTML="<b>Could not load one or both comparison files.</b>"}};
 document.getElementById("min").oninput=e=>{minShared=+e.target.value;document.getElementById("minlabel").textContent=minShared;render()};
 document.getElementById("search").oninput=e=>{query=e.target.value;render()};document.getElementById("rel").onchange=e=>{relationship=e.target.value;render()};
 document.getElementById("demo").onclick=()=>{data=demo;render()};
